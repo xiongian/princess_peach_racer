@@ -6,6 +6,14 @@
 # define PWM_RESOLUTION 16
 # define BUZZER_PIN 12
 
+bool myLedcWrite(uint8_t pin, uint32_t dutyCycle){
+  Serial.print("Pin ");
+  Serial.print(pin);
+  Serial.print(" output duty cycle: ");
+  Serial.print(dutyCycle/65536.0*100.0);
+  Serial.println(" %");
+  return ledcWrite(pin, dutyCycle);
+}
 
 void setup() {
   // put your setup code here, to run once:
@@ -18,15 +26,9 @@ void setup() {
   ledcAttachChannel(BUZZER_PIN,440,4,2);
 }
 
-bool myLedcWrite(uint8_t pin, uint32_t dutyCycle){
-  Serial.print("Output duty cycle: ");
-  Serial.print(dutyCycle/65536.0*100.0);
-  Serial.println(" %");
-  return ledcWrite(pin, dutyCycle);
-}
-
 float lastDutyCycle0 = 7.5;
 bool tone_avail = true;
+int state = 0;
 
 void loop() {
   // put your main code here, to run repeatedly:
@@ -74,38 +76,61 @@ void loop() {
 
   float dutyCycleChange0 = dutyCycle0-lastDutyCycle0;
 
+  if (dutyCycleChange0>0.25){
+    dutyCycleChange0 = 0.25;
+  }
+  if (dutyCycleChange0<-0.25){
+    dutyCycleChange0 = -0.25;
+  }
+
+  float finalDutyCycle0 = lastDutyCycle0 + dutyCycleChange0;
+
+  if(dutyCycle1<5.02 && dutyCycle1>4.98){
+    finalDutyCycle0 = 7.5;
+  }
+
+  if (state==2 && finalDutyCycle0<7){
+    finalDutyCycle0 = 7;
+  }
+
   if (!tone_avail){
     myLedcWrite(BUZZER_PIN,0);
   }
 
+  if (state==0 && tone_avail){
+    myLedcWrite(BUZZER_PIN,16/2);
+    tone_avail = false;
+  }
 
-
-  if (dutyCycle1 >4.9 && dutyCycle1 <5.1){ // if kill switch is on
-    myLedcWrite(OUTPUT_PIN, (uint32_t)(7.5/100*65535));
-    lastDutyCycle0 = 7.5;
-    tone_avail = true;
-  } else if (dutyCycle0>7.47 && dutyCycle0<7.53 && abs(dutyCycleChange0) < 0.5){
-    myLedcWrite(OUTPUT_PIN, (uint32_t)(7.52/100*65535));
-    if (tone_avail){
-          myLedcWrite(BUZZER_PIN,16/2);
-          tone_avail = false;
-    }
-    lastDutyCycle0 = 7.52;
-  } else if (dutyCycleChange0 > 0.5){ // if quick accel
-    float overwriteDutyCycle0 = lastDutyCycle0 + 0.25;
-    myLedcWrite(OUTPUT_PIN, (uint32_t)(overwriteDutyCycle0/100*65535));
-    lastDutyCycle0 = overwriteDutyCycle0;
-    tone_avail = true;
-  } else if (dutyCycleChange0 < -0.5) { // if quick decel
-    float overwriteDutyCycle0 = lastDutyCycle0 - 0.25;
-    myLedcWrite(OUTPUT_PIN, (uint32_t)(overwriteDutyCycle0/100*65535));
-    lastDutyCycle0 = overwriteDutyCycle0;
-    tone_avail = true;
-  } else {
-    myLedcWrite(OUTPUT_PIN, dutyCycle0/100*65535);
-    lastDutyCycle0 = dutyCycle0;
+  if (state!=0 && (finalDutyCycle0<7.45 || finalDutyCycle0>7.55)){
     tone_avail = true;
   }
-  delay(10);
+
+  Serial.print("State: ");
+  Serial.println(state);
+
+
+  if (state==0){
+    if (dutyCycleChange0>0.05){
+      state=1;
+    } else if (dutyCycleChange0<-0.05){
+      state=3;
+    }
+  } else if (state==1 && finalDutyCycle0<7.45) {
+    state = 2;
+  } else if (state ==2 && finalDutyCycle0>7.45){
+    state = 0;
+  } else if (state==3){
+    if (finalDutyCycle0>7.55){
+      state = 1;
+    } else if (finalDutyCycle0<7.55 && finalDutyCycle0>7.45 && tone_avail){
+      myLedcWrite(BUZZER_PIN,16/2);
+      tone_avail = false;
+    }
+  }
+
+  myLedcWrite(OUTPUT_PIN,(uint32_t)(finalDutyCycle0/100.0*65535.0));
+
+  lastDutyCycle0 = finalDutyCycle0;
 
 }
