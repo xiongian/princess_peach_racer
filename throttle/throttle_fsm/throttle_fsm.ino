@@ -1,6 +1,9 @@
-# define PWM_PIN0 15
-# define PWM_PIN1 4
-# define OUTPUT_PIN 5
+# define PWM_PIN0 15 // throttle input
+# define PWM_PIN1 4 // kill switch input
+# define PWM_PIN2 34 // steering input
+# define OUTPUT_PIN0 5 // throttle output
+# define OUTPUT_PIN1 19 // steering output
+
 # define PWM_CHANNEL 0 
 # define PWM_FREQ 50
 # define PWM_RESOLUTION 16
@@ -15,15 +18,43 @@ bool myLedcWrite(uint8_t pin, uint32_t dutyCycle){
   return ledcWrite(pin, dutyCycle);
 }
 
+// turn servo proportional to dutyCycle0
+void turnServo(float dutyCycle) {
+  //9.825 for right, 5.175 for left, 7.5 = neutral, 2.325 shift.
+  //60 degrees right, 60 degrees left
+  //0.03875 shifts per degree
+  //25.8064516129d degrees per shift
+  const long MAX_DEGREE = 60;
+  const float NEUTRAL = 7.5;
+  const float SHIFT = 2.325;
+  const float DEGREE_PER_SHIFT = MAX_DEGREE / SHIFT;
+  float result = dutyCycle + ((dutyCycle-7.5)/7.5*2.325);
+
+  myLedcWrite(OUTPUT_PIN1,(uint32_t)(result/100.0*65535.0));
+
+  // dutyCycle();
+  // unsigned long shift_fraction = (dutyCycle - NEUTRAL) / SHIFT;
+
+  // long pos = shift_fraction * DEGREE_PER_SHIFT;
+  // myservo.write(pos);
+
+  // delay(10);
+}
+
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
 
   pinMode(PWM_PIN0, INPUT);
   pinMode(PWM_PIN1, INPUT);
-  pinMode(OUTPUT_PIN, OUTPUT);
-  ledcAttachChannel(OUTPUT_PIN, PWM_FREQ, PWM_RESOLUTION,1);
+  pinMode(PWM_PIN2, INPUT);
+
+  pinMode(OUTPUT_PIN0, OUTPUT);
+  pinMode(OUTPUT_PIN1, OUTPUT);
+
+  ledcAttachChannel(OUTPUT_PIN0, PWM_FREQ, PWM_RESOLUTION,1);
   ledcAttachChannel(BUZZER_PIN,440,4,2);
+  ledcAttachChannel(OUTPUT_PIN1, PWM_FREQ, PWM_RESOLUTION,4);
 }
 
 float lastDutyCycle0 = 7.5;
@@ -45,6 +76,11 @@ void loop() {
   unsigned long period1 = highTime1 + lowTime1;
   float dutyCycle1 = (highTime1 * 100.0) / period1;
 
+  unsigned long highTime2 = pulseIn(PWM_PIN2, HIGH);
+  unsigned long lowTime2 = pulseIn(PWM_PIN2, LOW);
+  unsigned long period2 = highTime2 + lowTime2;
+  float dutyCycle2 = (highTime2 * 100.0) / period2;
+
   Serial.print("High Time 0: ");
   Serial.print(highTime0);
   Serial.print(" us, Low Time 0: ");
@@ -61,6 +97,14 @@ void loop() {
   Serial.print(dutyCycle1);
   Serial.println(" %");
 
+  Serial.print("High Time 1: ");
+  Serial.print(highTime2);
+  Serial.print(" us, Low Time 1: ");
+  Serial.print(lowTime2);
+  Serial.print(" us, Duty Cycle 1: ");
+  Serial.print(dutyCycle2);
+  Serial.println(" %");
+
   // float forwardMultiplyFactor = 1.5;
   // float backwardMultiplyFactor = 1;
 
@@ -73,6 +117,8 @@ void loop() {
 
   // float offset = 0;
   // float finalDutyCycle0 = dutyCycle0 + offset;
+
+  turnServo(dutyCycle2);
 
   float dutyCycleChange0 = dutyCycle0-lastDutyCycle0;
 
@@ -129,7 +175,7 @@ void loop() {
     }
   }
 
-  myLedcWrite(OUTPUT_PIN,(uint32_t)(finalDutyCycle0/100.0*65535.0));
+  myLedcWrite(OUTPUT_PIN0,(uint32_t)(finalDutyCycle0/100.0*65535.0));
 
   lastDutyCycle0 = finalDutyCycle0;
 
